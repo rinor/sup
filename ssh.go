@@ -293,3 +293,7 @@ func (c *SSHClient) Signal(sig os.Signal) error {
 		return fmt.Errorf("%v not supported", sig)
 	}
 }
+
+func (c *SSHClient) Envs() string {
+	return c.env
+}

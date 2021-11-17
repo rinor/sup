@@ -5,6 +5,8 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -27,38 +29,77 @@ func (sup *Stackup) createTasks(cmd *Command, clients []Client, env string) ([]*
 
 	// Anything to upload?
 	for _, upload := range cmd.Upload {
-		uploadFile, err := ResolveLocalPath(cwd, upload.Src, env)
-		if err != nil {
-			return nil, errors.Wrap(err, "upload: "+upload.Src)
-		}
-		uploadTarReader, err := NewTarStreamReader(cwd, uploadFile, upload.Exc)
-		if err != nil {
-			return nil, errors.Wrap(err, "upload: "+upload.Src)
-		}
 
-		task := Task{
-			Run:   RemoteTarCommand(upload.Dst),
-			Input: uploadTarReader,
-			TTY:   false,
-		}
+		var (
+			uploadFiles = make(map[string][]int)
+			uploadTars  = make(map[string]io.Reader)
+			clientFile  = make([]string, len(clients))
+		)
 
-		if cmd.Once {
-			task.Clients = []Client{clients[0]}
-			tasks = append(tasks, &task)
-		} else if cmd.Serial > 0 {
-			// Each "serial" task client group is executed sequentially.
-			for i := 0; i < len(clients); i += cmd.Serial {
-				j := i + cmd.Serial
-				if j > len(clients) {
-					j = len(clients)
-				}
-				copy := task
-				copy.Clients = clients[i:j]
-				tasks = append(tasks, &copy)
+		for i := range clients {
+			file, err := ResolveLocalPath(cwd, upload.Src, env+clients[i].Envs())
+			if err != nil {
+				return nil, errors.Wrap(err, "upload: "+upload.Src)
 			}
-		} else {
-			task.Clients = clients
-			tasks = append(tasks, &task)
+			if strings.HasSuffix(upload.Src, "/") {
+				file += "/"
+			}
+			uploadFiles[file] = append(uploadFiles[file], i)
+			clientFile[i] = file
+		}
+
+		for file := range uploadFiles {
+			basePath := filepath.Dir(file)
+			baseFile := filepath.Base(file)
+			if strings.HasSuffix(upload.Src, "/") {
+				baseFile = "."
+			}
+
+			uploadTarReader, err := NewTarStreamReader(basePath, baseFile, upload.Exc)
+			if err != nil {
+				return nil, errors.Wrap(err, "upload: "+upload.Src)
+			}
+			uploadTars[file] = uploadTarReader
+		}
+
+		for file := range uploadTars {
+
+			task := Task{
+				Run:   RemoteTarCommand(upload.Dst),
+				Input: uploadTars[file],
+				TTY:   false,
+			}
+
+			if cmd.Once {
+				task.Input = uploadTars[clientFile[0]]
+				task.Clients = []Client{clients[0]}
+				tasks = append(tasks, &task)
+				break
+			} else if cmd.Serial > 0 {
+				if len(uploadTars) > 1 {
+					return nil, errors.Wrap(fmt.Errorf("Serial not supported when using host variables"), "upload: "+upload.Src)
+				}
+
+				// Each "serial" task client group is executed sequentially.
+				for i := 0; i < len(clients); i += cmd.Serial {
+					j := i + cmd.Serial
+					if j > len(clients) {
+						j = len(clients)
+					}
+					copy := task
+					copy.Clients = clients[i:j]
+					tasks = append(tasks, &copy)
+				}
+			} else {
+				if len(uploadTars) > 1 {
+					for _, i := range uploadFiles[file] {
+						task.Clients = append(task.Clients, clients[i])
+					}
+				} else {
+					task.Clients = clients
+				}
+				tasks = append(tasks, &task)
+			}
 		}
 	}
 
