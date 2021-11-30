@@ -15,22 +15,26 @@ networks:
   # Groups of hosts
   local:
     hosts:
-      - localhost
+      - hostname: localhost
 
   dev:
     env:
       # Extra environment variable for dev hosts only
       DOCKER_HOST: tcp://127.0.0.1:2375
     hosts:
-      - docker@192.168.59.103
+      - hostname: docker@192.168.59.103
+        env:
+          # Extra environment variable for specific host (highest priority)
+          DOCKER_HOST: tcp://127.0.0.1:2375
 
   stg:
     hosts:
-      - ubuntu@stg.example.com
+      - hostname: ubuntu@stg.example.com
 
   prod:
+    # hosts only (empty host envs for now)
     inventory: for i in 1 2 3 4; do echo "ubuntu@prod$i.example.com"; done
-  
+
   k8s:
     inventory: for i in $(kubectl get nodes -o jsonpath={.items[*].status.addresses[?\(@.type==\"InternalIP\"\)].address}); do echo "ubuntu@$i"; done
 
@@ -62,6 +66,7 @@ commands:
 
   config:
     desc: Upload/test config file.
+    # also host envs are supported here
     upload:
       - src: ./example.$SUP_NETWORK.cfg
         dst: /tmp/

@@ -52,15 +52,15 @@ func (sup *Stackup) Run(network *Network, envVars EnvList, commands ...*Command)
 
 	for i, host := range network.Hosts {
 		wg.Add(1)
-		go func(i int, host string) {
+		go func(i int, host Host) {
 			defer wg.Done()
 
 			// Localhost client.
-			if host == "localhost" {
+			if host.Hostname == "localhost" {
 				local := &LocalhostClient{
-					env: env + `export SUP_HOST="` + host + `";`,
+					env: env + host.Env.AsExport() + `export SUP_HOST="` + host.Hostname + `";`,
 				}
-				if err := local.Connect(host); err != nil {
+				if err := local.Connect(host.Hostname); err != nil {
 					errCh <- errors.Wrap(err, "connecting to localhost failed")
 					return
 				}
@@ -70,18 +70,18 @@ func (sup *Stackup) Run(network *Network, envVars EnvList, commands ...*Command)
 
 			// SSH client.
 			remote := &SSHClient{
-				env:   env + `export SUP_HOST="` + host + `";`,
+				env:   env + host.Env.AsExport() + `export SUP_HOST="` + host.Hostname + `";`,
 				user:  network.User,
 				color: Colors[i%len(Colors)],
 			}
 
 			if bastion != nil {
-				if err := remote.ConnectWith(host, bastion.DialThrough); err != nil {
+				if err := remote.ConnectWith(host.Hostname, bastion.DialThrough); err != nil {
 					errCh <- errors.Wrap(err, "connecting to remote host through bastion failed")
 					return
 				}
 			} else {
-				if err := remote.Connect(host); err != nil {
+				if err := remote.Connect(host.Hostname); err != nil {
 					errCh <- errors.Wrap(err, "connecting to remote host failed")
 					return
 				}
@@ -97,6 +97,7 @@ func (sup *Stackup) Run(network *Network, envVars EnvList, commands ...*Command)
 	var clients []Client
 	for client := range clientCh {
 		if remote, ok := client.(*SSHClient); ok {
+			fmt.Printf("%sConnected: %s%s\n", remote.color, remote.host, ResetColor)
 			defer remote.Close()
 		}
 		_, prefixLen := client.Prefix()
@@ -172,7 +173,7 @@ func (sup *Stackup) Run(network *Network, envVars EnvList, commands ...*Command)
 						fmt.Fprintf(os.Stderr, "%v", errors.Wrap(err, "copying STDIN failed"))
 					}
 					// TODO: Use MultiWriteCloser (not in Stdlib), so we can writer.Close() instead?
-					for _, c := range clients {
+					for _, c := range task.Clients {
 						c.WriteClose()
 					}
 				}()

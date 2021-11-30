@@ -269,9 +269,9 @@ func main() {
 			os.Exit(1)
 		}
 
-		var hosts []string
+		var hosts []sup.Host
 		for _, host := range network.Hosts {
-			if expr.MatchString(host) {
+			if expr.MatchString(host.Hostname) {
 				hosts = append(hosts, host)
 			}
 		}
@@ -290,9 +290,9 @@ func main() {
 			os.Exit(1)
 		}
 
-		var hosts []string
+		var hosts []sup.Host
 		for _, host := range network.Hosts {
-			if !expr.MatchString(host) {
+			if !expr.MatchString(host.Hostname) {
 				hosts = append(hosts, host)
 			}
 		}
@@ -321,12 +321,12 @@ func main() {
 		}
 
 		// check network.Hosts for match
-		for _, host := range network.Hosts {
-			conf, found := confMap[host]
+		for i := range network.Hosts {
+			conf, found := confMap[network.Hosts[i].Hostname]
 			if found {
 				network.User = conf.User
 				network.IdentityFile = resolvePath(conf.IdentityFile)
-				network.Hosts = []string{fmt.Sprintf("%s:%d", conf.HostName, conf.Port)}
+				network.Hosts[i].Hostname = fmt.Sprintf("%s:%d", conf.HostName, conf.Port)
 			}
 		}
 	}

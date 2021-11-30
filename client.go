@@ -17,4 +17,5 @@ type Client interface {
 	Stderr() io.Reader
 	Stdout() io.Reader
 	Signal(os.Signal) error
+	Envs() string
 }

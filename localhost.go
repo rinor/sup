@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 
 	"github.com/pkg/errors"
 )
@@ -106,7 +107,12 @@ func (c *LocalhostClient) Signal(sig os.Signal) error {
 	return c.cmd.Process.Signal(sig)
 }
 
+func (c *LocalhostClient) Envs() string {
+	return c.env
+}
+
 func ResolveLocalPath(cwd, path, env string) (string, error) {
+
 	// Check if file exists first. Use bash to resolve $ENV_VARs.
 	cmd := exec.Command("bash", "-c", env+"echo -n "+path)
 	cmd.Dir = cwd
@@ -115,5 +121,11 @@ func ResolveLocalPath(cwd, path, env string) (string, error) {
 		return "", errors.Wrap(err, "resolving path failed")
 	}
 
-	return string(resolvedFilename), nil
+	resolvedPath := filepath.Join(cwd, string(resolvedFilename))
+
+	if _, err := os.Stat(resolvedPath); errors.Is(err, os.ErrNotExist) {
+		return "", errors.Wrap(err, "resolving path failed: "+resolvedPath)
+	}
+
+	return resolvedPath, nil
 }
